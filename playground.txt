@@ -1,0 +1,213 @@
+! Arduino Time library 
+
+The Time library adds timekeeping functionality to Arduino with or without external timekeeping hardware.
+It allows a sketch to get the time and date as: second, minute, hour, day, month and year.
+It also provides time as a standard C time_t so elapsed times can be easily calculated and time values shared across different platforms.
+
+The code is derived from the earlier Playground DateTime library but is updated
+to provide an API that is more flexible and easier to use.
+
+->[[http://www.arduino.cc/playground/uploads/Code/Time.zip | The download]] includes example sketches illustrating how similar sketch code can be used with: a Real Time Clock,
+Internet NTP time service, GPS time data, and Serial time messages from a computer
+
+Additional documentation is included in a readme.txt file
+
+'''Functional Overview '''
+hour();            // the hour now  (0-23)
+minute();          // the minute now (0-59)          
+second();          // the second now (0-59) 
+day();             // the day now (1-31)
+weekday();         // day of the week, Sunday is day 0 
+month();           // the month now (1-12)
+year();            // the full four digit year: (2009, 2010 etc) 
+
+there are also functions to return the hour in 12 hour format
+hourFormat12();    // the hour now in 12 hour format
+isAM();            // returns true if time now is AM 
+isPM();            // returns true if time now is PM
+
+now();             // returns the current time as seconds since Jan 1 1970 
+
+The time and date functions can take an optional parameter for the time. This prevents
+errors if the time rolls over between elements. For example, if a new minute begins
+between getting the minute and second, the values will be inconsistent. Using the 
+following functions eliminates this problem 
+  time_t t = now(); // store the current time in time variable t 
+  hour(t);          // returns the hour for the given time t
+  minute(t);        // returns the minute for the given time t
+  second(t);        // returns the second for the given time t 
+  day(t);           // the day for the given time t 
+  weekday(t);       // day of the week for the given time t  
+  month(t);         // the month for the given time t 
+  year(t);          // the year for the given time t  
+  
+  
+Functions for managing the timer services are:  
+setTime(t);             // set the system time to the give time t
+adjustTime(adjustment); // adjust system time by adding the adjustment value
+
+timeStatus();       // indicates if time has been set and recently synchronized
+                    // returns one of the following enumerations:
+    timeNotSet      // the time has never been set, the clock started at Jan 1 1970
+    timeNeedsSync   // the time had been set but a sync attempt did not succeed
+    timeSet         // the time is set and is synced
+Time and Date values are not valid if the status is timeNotSet. Otherwise values can be used but 
+the returned time may have drifted if the status is timeNeedsSync. 	
+
+setSyncProvider(getTimeFunction);  // set the external time provider
+setSyncInterval(interval);         // set the number of seconds between re-sync
+
+Strings for days and months are supported in the library, see the TimeSerialDateString.pde example in the download
+
+There are many convenience macros in the time.h file for time constants and conversion of time units.
+
+'''Using the Library'''
+Copy the download to the Library directory.
+The Time directory contains the Time library and some example sketches
+illustrating how the library can be used with various time sources:
+
+- TimeSerial.pde shows Arduino as a clock without external hardware.
+  It is synchronized by time messages sent over the serial port.
+  A companion Processing sketch will automatically provide these messages
+  if it is running and connected to the Arduino serial port. 
+
+- TimeRTC uses a DS1307 real time clock to provide time synchronization.
+  A basic RTC library named DS1307RTC is included in the download.
+  To run this sketch the DS1307RTC library must be installed.
+
+- TimeNTP uses the Arduino Ethernet shield to access time using the internet NTP time service.
+  The NTP protocol uses UDP and the UdpBytewise library is required, see:
+  http://bitbucket.org/bjoern/arduino_osc/src/14667490521f/libraries/Ethernet/
+
+-TimeGPS gets time from a GPS
+ This requires the TinyGPS and NewSoftSerial libraries from Mikal Hart:
+ http://arduiniana.org/libraries/TinyGPS and http://arduiniana.org/libraries/newsoftserial/
+
+!!!!!Example sketch:
+The test sketch uses a message on the serial port to set the time. 
+A Processing sketch that sends these messsages is included in the download but you can test this sketch by sending T1262347200 using the serial monitor (this sets the time to noon on Jan 1 2010
+
+(:source lang=c ?getcode:)
+#include <Time.h>  
+
+#define TIME_MSG_LEN  11   // time sync to PC is HEADER followed by Unix time_t as ten ASCII digits
+#define TIME_HEADER  'T'   // Header tag for serial time sync message
+#define TIME_REQUEST  7    // ASCII bell character requests a time sync message 
+
+// T1262347200  //noon Jan 1 2010
+
+void setup()  {
+  Serial.begin(9600);
+}
+
+void loop(){    
+  if(Serial.available() ) 
+  {
+    processSyncMessage();
+  }
+  if(timeStatus()!= timeNotSet) 
+    Serial.println("waiting for sync message");
+  else     
+      digitalClockDisplay();  
+  delay(1000);
+}
+
+void digitalClockDisplay(){
+  // digital clock display of the time
+  Serial.print(hour());
+  printDigits(minute());
+  printDigits(second());
+  Serial.print(" ");
+  Serial.print(day());
+  Serial.print(" ");
+  Serial.print(month());
+  Serial.print(" ");
+  Serial.print(year()); 
+  Serial.println(); 
+}
+
+void printDigits(int digits){
+  // utility function for digital clock display: prints preceding colon and leading 0
+  Serial.print(":");
+  if(digits < 10)
+    Serial.print('0');
+  Serial.print(digits);
+}
+
+void processSyncMessage() {
+  // if time sync available from serial port, update time and return true
+  while(Serial.available() >=  TIME_MSG_LEN ){  // time message consists of a header and ten ascii digits
+    char c = Serial.read() ; 
+    Serial.print(c);  
+    if( c == TIME_HEADER ) {       
+      time_t pctime = 0;
+      for(int i=0; i < TIME_MSG_LEN -1; i++){   
+        c = Serial.read();          
+        if( c >= '0' && c <= '9'){   
+          pctime = (10 * pctime) + (c - '0') ; // convert digits to a number    
+        }
+      }   
+      setTime(pctime);   // Sync Arduino clock to the time received on the serial port
+    }  
+  }
+}
+(:sourcend:)
+
+Here is a fragment from the TimeNTP.pde example sketch showing how the syncProvider functionality
+simplifies the sketch code. This sketch gets time from an Internet time provider (NTP) using the 
+Arduino Ethernet shield. Note that the loop code does not require any logic to maintain time sync.
+The Time library will automatically monitor NTP and sync the time as necessary. 
+
+(:source lang=c ?getcode:)
+void setup() 
+{
+  Serial.begin(9600);
+  Ethernet.begin(mac,ip,gateway);  
+  Serial.println("waiting for sync");
+  setSyncProvider(getNtpTime);
+  while(timeStatus()== timeNotSet)   
+     ; // wait until the time is set by the sync provider
+}
+
+void loop()
+{  
+  if( now() != prevDisplay) //update the display only if the time has changed
+  {
+    prevDisplay = now();
+    digitalClockDisplay();  
+  }
+}
+
+void digitalClockDisplay(){
+  // digital clock display of the time
+  Serial.print(hour());
+  printDigits(minute());
+  printDigits(second());
+  Serial.print(" ");
+  Serial.print(day());
+  Serial.print(" ");
+  Serial.print(month());
+  Serial.print(" ");
+  Serial.print(year()); 
+  Serial.println(); 
+}
+
+void printDigits(int digits){
+  // utility function for digital clock display: prints preceding colon and leading 0
+  Serial.print(":");
+  if(digits < 10)
+    Serial.print('0');
+  Serial.print(digits);
+}
+
+/*-------- NTP code ----------*/
+// ntp code not shown - see TimeNTP.pde example sketch
+(:sourcend:)
+
+!!!!!On using and modifying libraries
+*http://www.arduino.cc/en/Main/Libraries
+*http://www.arduino.cc/en/Reference/Libraries
+
+!!!!! Questions, comments and suggestions on the library and documentation 
+[[http://www.arduino.cc/cgi-bin/yabb2/YaBB.pl?num=1211215328| Forum discussion]]\\
+
