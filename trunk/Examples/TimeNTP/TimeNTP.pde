@@ -8,19 +8,33 @@
 #include <Time.h> 
 #include <Ethernet.h>
 #include <UdpBytewise.h>  // UDP library from: bjoern@cs.stanford.edu 12/30/2008 
+#if  UDP_TX_PACKET_MAX_SIZE <64 ||  UDP_RX_PACKET_MAX_SIZE < 66
+#error : UDP packet size to small - modify UdpBytewise.h to set buffers to 64 bytes
+#endif
+/*
+ *
+ * You may need to modify the UdpBytewise.h library to allow enough space in the buffers for the NTP packets.
+ * Open up UdpBytewse.h and set the following buffers to 64 bytes:
+ *    #define UDP_TX_PACKET_MAX_SIZE 64
+ *    #define UDP_RX_PACKET_MAX_SIZE 64
+ */
 
 
 byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED }; 
-byte ip[] = { 192, 168, 1, 44 };
-byte gateway[] = { 192, 168, 1, 254 }; 
-byte time_dot_nist_dot_gov[] = { 192, 43, 244, 18}; // time.nist.gov
+byte ip[] = { 192, 168, 1, 44 }; // set the IP address to an unused address on your network
+
+byte SNTP_server_IP[]    = { 192, 43, 244, 18}; // time.nist.gov
+//byte SNTP_server_IP[] = { 130,149,17,21};    // ntps1-0.cs.tu-berlin.de
+//byte SNTP_server_IP[] = { 192,53,103,108};   // ptbtime1.ptb.de
+
 
 time_t prevDisplay = 0; // when the digital clock was displayed
+const  long timeZoneOffset = 0L; // set this to the offset in seconds to your local time;
 
 void setup() 
 {
   Serial.begin(9600);
-  Ethernet.begin(mac,ip,gateway);  
+  Ethernet.begin(mac,ip);  
   Serial.println("waiting for sync");
   setSyncProvider(getNtpTime);
   while(timeStatus()== timeNotSet)   
@@ -62,12 +76,12 @@ void printDigits(int digits){
 
 unsigned long getNtpTime()
 {
-  sendNTPpacket(time_dot_nist_dot_gov);
+  sendNTPpacket(SNTP_server_IP);
   delay(1000);
   if ( UdpBytewise.available() ) {
     for(int i=0; i < 40; i++)
        UdpBytewise.read(); // ignore every field except the time
-    const unsigned long seventy_years = 2208988800UL;        
+    const unsigned long seventy_years = 2208988800UL + timeZoneOffset;        
     return getUlong() -  seventy_years;      
   }
   return 0; // return 0 if unable to get the time
